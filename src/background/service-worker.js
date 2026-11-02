@@ -10,6 +10,11 @@ chrome.action.onClicked.addListener(() => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "OPEN_OPTIONS") {
+    chrome.runtime.openOptionsPage();
+    return undefined;
+  }
+
   if (message?.type === "HAS_KEY") {
     chrome.storage.local.get(STORAGE_KEY).then((stored) => {
       sendResponse({ ok: true, hasKey: Boolean(stored[STORAGE_KEY]) });

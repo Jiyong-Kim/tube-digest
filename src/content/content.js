@@ -94,7 +94,7 @@
       host.id = "tube-digest-host";
       host.style.cssText = "display:block;width:100%;";
       shadow = host.attachShadow({ mode: "open" });
-      anchor.parent.insertBefore(host, anchor.before);
+      placeHost(host, anchor);
       hostGeneration += 1;
       host.addEventListener("click", (event) => event.stopPropagation());
       host.addEventListener("mousedown", (event) => event.stopPropagation());
@@ -106,12 +106,21 @@
   }
 
   function getAnchor() {
-    const below = document.querySelector("ytd-watch-flexy #below");
-    const metadata = below?.querySelector("ytd-watch-metadata");
-    if (below && metadata) return { parent: below, before: metadata.nextSibling };
+    const metadata = document.querySelector("ytd-watch-flexy #below ytd-watch-metadata");
+    if (metadata?.parentNode) return { parent: metadata.parentNode, before: metadata.nextSibling };
     const secondary = document.querySelector("#secondary-inner") || document.querySelector("#secondary");
     if (secondary) return { parent: secondary, before: secondary.firstChild };
     return null;
+  }
+
+  function placeHost(host, anchor) {
+    const parent = anchor.parent;
+    const before = anchor.before;
+    if (before && before.parentNode === parent) {
+      parent.insertBefore(host, before);
+      return;
+    }
+    parent.appendChild(host);
   }
 
   async function renderShell() {
@@ -414,7 +423,7 @@
   }
 
   function openOptions() {
-    chrome.runtime.openOptionsPage();
+    chrome.runtime.sendMessage({ type: "OPEN_OPTIONS" });
   }
 
   function seekTo(timestamp) {
