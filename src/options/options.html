@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tube Digest 설정</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="hero">
+        <img src="../../icons/icon48.png" width="48" height="48" alt="" />
+        <div>
+          <p class="eyebrow">YouTube · OpenRouter</p>
+          <h1>Tube Digest</h1>
+          <p class="dek">시청 중인 영상의 자막을 읽어, 3줄 요약과 키워드, 타임스탬프별 핵심을 만듭니다.</p>
+        </div>
+      </header>
+
+      <section class="card" aria-labelledby="key-heading">
+        <h2 id="key-heading">API 키</h2>
+        <p class="help">
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">OpenRouter API 키</a>를
+          발급해 붙여 넣으세요. 모델은 <code>openrouter/free</code> 로 고정되어 있습니다.
+        </p>
+        <label class="field" for="api-key">OpenRouter API 키</label>
+        <div class="key-row">
+          <input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-..." />
+          <button id="toggle-key" type="button">표시</button>
+        </div>
+        <div class="row">
+          <button id="save" type="button" class="primary">저장</button>
+          <button id="check" type="button">키 확인</button>
+          <button id="remove" type="button" class="danger">삭제</button>
+        </div>
+        <p id="status" class="status" role="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>사용 방법</h2>
+        <ol>
+          <li>자막이 있는 유튜브 영상을 엽니다.</li>
+          <li>제목과 설명 아래의 <strong>AI 요약</strong> 카드에서 요약하기를 누릅니다.</li>
+          <li>타임스탬프를 누르면 그 시점으로 이동합니다.</li>
+        </ol>
+      </section>
+
+      <section class="card">
+        <h2>저장 위치</h2>
+        <p>
+          API 키는 이 브라우저의 확장 프로그램 저장소(<code>chrome.storage.local</code>)에만 둡니다. 다른 기기로
+          동기화하지 않습니다. 요약하기를 눌렀을 때만 자막 텍스트가 OpenRouter로 전송됩니다.
+        </p>
+      </section>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
