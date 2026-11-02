@@ -12,12 +12,20 @@
 
     const player = await requestPlayer(videoId);
     const title = player?.title || readDomTitle();
-    const orderedTracks = rankTracks(player?.tracks || []);
+    const fromPlayer = cuesFromCaptures(player?.captures, videoId);
+    if (fromPlayer) return pack(fromPlayer.cues, title, fromPlayer.language, "timedtext");
 
-    if (orderedTracks.length) {
+    const orderedTracks = rankTracks(player?.tracks || []);
+    const tokenGated = orderedTracks.some((track) => /(?:^|[?&])exp=xpe(?:&|$)/.test(track.baseUrl));
+
+    if (orderedTracks.length && !tokenGated) {
       const fromTracks = await loadTracks(orderedTracks);
       if (fromTracks) return pack(fromTracks.cues, title, fromTracks.language, "timedtext");
     }
+
+    const primed = await requestPrime(videoId);
+    const primedCues = cuesFromCaptures(primed?.captures, videoId);
+    if (primedCues) return pack(primedCues.cues, title, primedCues.language, "timedtext");
 
     const innertube = player?.innertube;
     if (innertube?.apiKey && innertube.context && innertube.transcriptParams) {
@@ -35,7 +43,9 @@
     if (usable(domCues)) return pack(domCues, title, "", "dom");
 
     throw new Error(
-      "이 영상에서 자막을 찾지 못했습니다. 자막이 제공되는 영상인지 확인한 뒤 다시 시도해 주세요.",
+      orderedTracks.length
+        ? "자막은 있지만 내용을 가져오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
+        : "이 영상에서 자막을 찾지 못했습니다. 자막이 제공되는 영상인지 확인한 뒤 다시 시도해 주세요.",
     );
   }
 
@@ -66,7 +76,7 @@
     for (let attempt = 0; attempt < 5; attempt += 1) {
       last = await requestPlayerOnce();
       const matches = !last?.videoId || last.videoId === expectedId;
-      const ready = last?.tracks?.length || last?.innertube?.transcriptParams;
+      const ready = last?.tracks?.length || last?.captures?.length || last?.innertube?.transcriptParams;
       if (matches && ready) return last;
       await wait(350);
     }
@@ -95,6 +105,55 @@
     });
   }
 
+  function requestPrime(videoId) {
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve(null);
+      }, 22000);
+
+      function onMessage(event) {
+        if (event.source !== window) return;
+        const data = event.data;
+        if (!data || data.source !== "tube-digest-bridge" || data.requestId !== requestId || data.type !== "captions") {
+          return;
+        }
+        clearTimeout(timer);
+        window.removeEventListener("message", onMessage);
+        resolve(data.payload || null);
+      }
+
+      window.addEventListener("message", onMessage);
+      window.postMessage(
+        { source: "tube-digest-content", type: "prime-captions", requestId, videoId },
+        "*",
+      );
+    });
+  }
+
+  function cuesFromCaptures(captures, videoId) {
+    const ranked = [...(captures || [])]
+      .filter((item) => item?.body && (!videoId || item.videoId === videoId))
+      .sort((left, right) => scoreCapture(right) - scoreCapture(left));
+    for (const item of ranked) {
+      const cues = parseCaptionBody(item.body);
+      if (usable(cues)) return { cues, language: item.language || "" };
+    }
+    return null;
+  }
+
+  function scoreCapture(item) {
+    const language = String(item.language || "").toLowerCase();
+    let score = 0;
+    if (language.startsWith("ko")) score += 100;
+    else if (language.startsWith("en")) score += 50;
+    else score += 10;
+    if (item.kind !== "asr") score += 5;
+    if (!item.translated) score += 20;
+    return score;
+  }
+
   function rankTracks(tracks) {
     return [...tracks].sort((left, right) => scoreTrack(right) - scoreTrack(left));
   }
@@ -114,8 +173,8 @@
       try {
         const cues = await fetchTrack(track);
         if (usable(cues)) return { cues, language: track.languageCode || "" };
-      } catch {
-        continue;
+      } catch (error) {
+        if (error?.empty) return null;
       }
     }
     return null;
@@ -129,8 +188,8 @@
     try {
       const jsonCues = await fetchCaptionBody(withJson);
       if (jsonCues.length) return jsonCues;
-    } catch {
-      if (withJson.toString() === original.toString()) throw new Error("caption failed");
+    } catch (error) {
+      if (error?.empty || withJson.toString() === original.toString()) throw error;
     }
     if (withJson.toString() === original.toString()) return [];
     return fetchCaptionBody(original);
@@ -140,6 +199,11 @@
     const response = await fetchWithTimeout(url.toString(), { credentials: "include" }, 15000);
     if (!response.ok) throw new Error(`caption ${response.status}`);
     const body = await response.text();
+    if (!body.trim()) {
+      const error = new Error("caption empty");
+      error.empty = true;
+      throw error;
+    }
     return parseCaptionBody(body);
   }
 
@@ -212,12 +276,12 @@
   }
 
   function findTranscriptButton() {
-    const scoped = document.querySelector(
+    const scoped = queryAllDeep(
       "ytd-video-description-transcript-section-renderer button, ytd-video-description-transcript-section-renderer yt-button-shape button",
     );
-    if (scoped) return scoped;
+    if (scoped[0]) return scoped[0];
 
-    const candidates = document.querySelectorAll("#description button, ytd-watch-metadata button, #below button");
+    const candidates = queryAllDeep("button");
     for (const button of candidates) {
       const label = `${button.getAttribute("aria-label") || ""} ${button.innerText || ""}`.replace(/\s+/g, " ").trim();
       if (!label || label.length > 48) continue;
@@ -228,7 +292,7 @@
 
   function readDomSegments() {
     const cues = [];
-    document.querySelectorAll("ytd-transcript-segment-renderer").forEach((node) => {
+    queryAllDeep("ytd-transcript-segment-renderer").forEach((node) => {
       const timeText = node.querySelector(".segment-timestamp, [class*='timestamp']")?.textContent || "";
       const text = (node.querySelector(".segment-text, yt-formatted-string")?.textContent || "")
         .replace(/\s+/g, " ")
@@ -285,10 +349,33 @@
   function parseTimedTextXml(xml) {
     const doc = new DOMParser().parseFromString(xml, "text/xml");
     if (doc.querySelector("parsererror")) return [];
-    return [...doc.getElementsByTagName("text")].map((node) => ({
-      startMs: Math.round(Number(node.getAttribute("start") || 0) * 1000),
+    const textNodes = [...doc.getElementsByTagName("text")];
+    if (textNodes.length) {
+      return textNodes.map((node) => ({
+        startMs: Math.round(Number(node.getAttribute("start") || 0) * 1000),
+        text: (node.textContent || "").replace(/\s+/g, " ").trim(),
+      }));
+    }
+    return [...doc.getElementsByTagName("p")].map((node) => ({
+      startMs: Number(node.getAttribute("t") || 0),
       text: (node.textContent || "").replace(/\s+/g, " ").trim(),
     }));
+  }
+
+  function queryAllDeep(selector, root = document) {
+    const found = [];
+    const stack = [root];
+    let visited = 0;
+    while (stack.length && visited < 4000) {
+      const node = stack.pop();
+      visited += 1;
+      if (!node?.querySelectorAll) continue;
+      node.querySelectorAll(selector).forEach((element) => found.push(element));
+      node.querySelectorAll("*").forEach((element) => {
+        if (element.shadowRoot) stack.push(element.shadowRoot);
+      });
+    }
+    return found;
   }
 
   function prepareCues(cues) {
