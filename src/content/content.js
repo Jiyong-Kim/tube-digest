@@ -499,8 +499,8 @@
 
   async function loadCss() {
     try {
-      const response = await fetch(chrome.runtime.getURL("src/content/panel.css"));
-      if (response.ok) return response.text();
+      const response = await chrome.runtime.sendMessage({ type: "GET_PANEL_CSS" });
+      if (response?.ok && response.css) return response.css;
     } catch {
       // 아래 최소 스타일로 표시합니다.
     }

@@ -22,6 +22,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "GET_PANEL_CSS") {
+    fetch(chrome.runtime.getURL("src/content/panel.css"))
+      .then((response) => (response.ok ? response.text() : ""))
+      .then((css) => sendResponse({ ok: Boolean(css), css }))
+      .catch(() => sendResponse({ ok: false, css: "" }));
+    return true;
+  }
+
   if (message?.type === "SUMMARIZE") {
     summarize(message.payload)
       .then((result) => sendResponse({ ok: true, ...result }))
